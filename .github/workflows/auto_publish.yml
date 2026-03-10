@@ -36,48 +36,67 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Check required secrets
+      - name: Check secrets (non-blocking)
         run: |
-          echo "Checking required environment variables..."
-          required_secrets=(
-            "DROPBOX_APP_KEY"
-            "DROPBOX_APP_SECRET"
-            "DROPBOX_REFRESH_TOKEN"
-            "INSTAGRAM_ACCESS_TOKEN"
-            "INSTAGRAM_ACCOUNT_ID"
-            "FACEBOOK_ACCESS_TOKEN"
-            "FACEBOOK_PAGE_ID"
-            "THREADS_ACCESS_TOKEN"
-            "THREADS_USER_ID"
-            "POLLINATIONS_API_KEY"
-          )
+          echo "=============================================="
+          echo "🔍 CHECKING SECRETS STATUS"
+          echo "=============================================="
+          echo ""
           
-          missing=0
-          for secret in "${required_secrets[@]}"; do
-            if [ -z "${!secret}" ]; then
-              echo "❌ Missing: $secret"
-              missing=1
-            else
-              echo "✅ Found: $secret"
-            fi
-          done
-          
-          if [ $missing -eq 1 ]; then
-            echo "❌ Some required secrets are missing!"
-            exit 1
+          # Dropbox (REQUIRED for fetching videos)
+          if [ -n "${DROPBOX_APP_KEY}" ] && [ -n "${DROPBOX_REFRESH_TOKEN}" ]; then
+            echo "✅ DROPBOX: Configured - Will fetch videos"
+          else
+            echo "⚠️  DROPBOX: Not configured - Cannot fetch videos"
           fi
           
-          echo "✅ All required secrets are present"
+          # Instagram
+          if [ -n "${INSTAGRAM_ACCESS_TOKEN}" ]; then
+            echo "✅ INSTAGRAM: Configured - Will upload reels/stories"
+          else
+            echo "⚠️  INSTAGRAM: Not configured - Will skip Instagram"
+          fi
+          
+          # Facebook
+          if [ -n "${FACEBOOK_ACCESS_TOKEN}" ]; then
+            echo "✅ FACEBOOK: Configured - Will upload reels/stories"
+          else
+            echo "⚠️  FACEBOOK: Not configured - Will skip Facebook"
+          fi
+          
+          # Threads
+          if [ -n "${THREADS_ACCESS_TOKEN}" ]; then
+            echo "✅ THREADS: Configured - Will upload"
+          else
+            echo "⚠️  THREADS: Not configured - Will skip Threads"
+          fi
+          
+          # YouTube
+          if [ -n "${YT_REFRESH_TOKEN}" ]; then
+            echo "✅ YOUTUBE: Configured - Will upload shorts"
+          else
+            echo "⚠️  YOUTUBE: Not configured - Will skip YouTube"
+          fi
+          
+          # AI Caption
+          if [ -n "${POLLINATIONS_API_KEY}" ]; then
+            echo "✅ AI CAPTIONS: Configured - Will generate unique captions"
+          else
+            echo "⚠️  AI CAPTIONS: Not configured - Will use default captions"
+          fi
+          
+          echo ""
+          echo "=============================================="
+          echo "🚀 PIPELINE WILL CONTINUE REGARDLESS OF STATUS"
+          echo "=============================================="
+          echo ""
         env:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
-          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           INSTAGRAM_ACCESS_TOKEN: ${{ secrets.INSTAGRAM_ACCESS_TOKEN }}
-          INSTAGRAM_ACCOUNT_ID: ${{ secrets.INSTAGRAM_ACCOUNT_ID }}
           FACEBOOK_ACCESS_TOKEN: ${{ secrets.FACEBOOK_ACCESS_TOKEN }}
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
-          THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
       
       - name: Run automation pipeline
