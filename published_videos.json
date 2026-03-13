@@ -118,5 +118,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-b3e91c29-be91-4970-8b8c-7a14c6b6d6ea.mp4",
+        "metadata": {
+            "title": "Stunning walk!",
+            "description": "A walk to remember... \ud83d\udd25 #fashion #walking #model #beautiful",
+            "success_flags": {
+                "instagram_reel": true,
+                "instagram_story": true,
+                "facebook_reel": true,
+                "facebook_story": true,
+                "threads": true,
+                "youtube": false
+            }
+        }
     }
 ]
