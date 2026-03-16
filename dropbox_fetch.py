@@ -33,6 +33,17 @@ def get_published_videos():
     return []
 
 
+def get_all_published_data():
+    """Get full published data including metadata and publish count."""
+    if os.path.exists(PUBLISHED_LOG):
+        with open(PUBLISHED_LOG, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return []
+    return []
+
+
 def get_dropbox_client():
     """Initialize and return Dropbox client with refresh token."""
     if DROPBOX_REFRESH_TOKEN and DROPBOX_APP_KEY and DROPBOX_APP_SECRET:
@@ -81,6 +92,8 @@ def fetch_one_video_from_dropbox():
     """
     Fetch ONE NEW video from Dropbox for processing.
     Checks published_videos.json to skip already processed videos.
+    
+    If no new videos in Dropbox, returns None (pipeline will fallback to local videos).
 
     Returns:
         Path to downloaded video or None
@@ -118,7 +131,7 @@ def fetch_one_video_from_dropbox():
     # Find first video NOT in published list
     for entry in videos:
         video_name = entry.name
-        
+
         # Check if already published
         if video_name in published:
             print(f"Skipping {video_name} - already published")
@@ -130,7 +143,7 @@ def fetch_one_video_from_dropbox():
             print(f"\n✅ Selected: {video_name}")
             return local_path
 
-    print("\n✅ All videos have already been published.")
+    print("\n⚠️  No new videos in Dropbox. Will fallback to local processed videos.")
     return None
 
 

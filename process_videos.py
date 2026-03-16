@@ -61,6 +61,25 @@ def process_single_video(video_path):
     print(f"Original size: {width}x{height}")
     print(f"Has audio: {'Yes' if has_audio else 'No'}")
 
+    # Get video duration
+    cmd_duration = [
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        video_path
+    ]
+    try:
+        duration = float(subprocess.check_output(cmd_duration).decode("utf-8").strip())
+        print(f"Video duration: {duration:.2f} seconds")
+    except Exception as e:
+        print(f"Failed to get duration: {e}")
+        duration = None
+
+    # Loop video if under 10 seconds
+    loop_video = duration is not None and duration < 10
+    if loop_video:
+        print(f"⚠️  Video is under 10 seconds ({duration:.2f}s). Will loop to extend duration.")
+
     w_delogo = 180
     h_delogo = 80
     x_delogo = 1080 - w_delogo - 5
@@ -69,17 +88,27 @@ def process_single_video(video_path):
     print(f"Processing {filename}...")
     print(f"  Upscaling to: 1080x1920")
     print(f"  Removing watermark at: x={x_delogo}, y={y_delogo}, w={w_delogo}, h={h_delogo}")
+    if loop_video:
+        print(f"  Looping: Video will be doubled (6s + 6s = 12s)")
     print(f"  Video: ENHANCED (sharpen + clarity boost)")
     if has_audio:
         print(f"  Audio: ENHANCED (normalize volume + improve clarity)")
     else:
         print(f"  Audio: No audio in original video")
 
-    vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
+    if loop_video:
+        # Loop video twice using concat filter
+        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[vtmp];[vtmp][vtmp]concat=n=2:v=1:a=0[v]"
+    else:
+        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
 
     if has_audio:
-        af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
-        
+        if loop_video:
+            # Loop audio twice to match video
+            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[atmp];[atmp][atmp]concat=n=2:v=0:a=1[a]"
+        else:
+            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
+
         cmd_ffmpeg = [
             "ffmpeg", "-y", "-i", video_path,
             "-filter_complex", f"{vf_filter};{af_filter}",

@@ -3,6 +3,9 @@ Main Automation Pipeline for GitHub Actions
 1. Fetch ONE video from Dropbox
 2. Process (upscale + remove watermark)
 3. Upload to social media platforms
+
+SMART FALLBACK: If no new videos in Dropbox, uses existing processed videos
+from Processed_Videos folder, selecting the least-published one.
 """
 import os
 import sys
@@ -21,8 +24,9 @@ def run_pipeline():
     Complete automation pipeline:
     Dropbox → Process → Upload to Social Media
 
-    Only processes ONE new video per run.
-    If no new videos, exits gracefully.
+    Priority:
+    1. If new video in Dropbox → download, process, upload
+    2. If no new videos → fallback to existing processed videos (least published first)
     """
     print("\n" + "=" * 60)
     print("🚀 STARTING AUTOMATION PIPELINE")
@@ -35,11 +39,16 @@ def run_pipeline():
     downloaded = fetch_one_video_from_dropbox()
 
     if not downloaded:
-        print("\n✅ No new videos to process. Pipeline complete.")
-        print("   (This is normal if all videos have been processed)")
+        print("\n⚠️  No new videos in Dropbox.")
+        print("   Will use existing processed videos from Processed_Videos folder.")
+        print("   Selecting least-published video for rotation...\n")
+        # Skip to Step 3 with fallback mode
+        from daily_publisher import main as publish_video
+        sys.argv = ["daily_publisher.py"]  # No specific video - let it select from fallback
+        publish_video()
         return
 
-    print(f"\n✅ Step 1 complete: Video downloaded\n")
+    print(f"\n✅ Step 1 complete: Video downloaded ({os.path.basename(downloaded)})\n")
 
     # Step 2: Process video (upscale + watermark removal)
     print("🎬 STEP 2: Processing video (upscaling + watermark removal)...")
