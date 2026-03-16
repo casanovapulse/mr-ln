@@ -97,15 +97,16 @@ def process_single_video(video_path):
         print(f"  Audio: No audio in original video")
 
     if loop_video:
-        # Loop video twice using concat filter
-        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[vtmp];[vtmp][vtmp]concat=n=2:v=1:a=0[v]"
+        # Loop video to double the duration using loop filter
+        # loop=1: start=0 means play once, then loop once more (total 2x)
+        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo},loop=1:start=0[v]"
     else:
         vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
 
     if has_audio:
         if loop_video:
-            # Loop audio twice to match video
-            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[atmp];[atmp][atmp]concat=n=2:v=0:a=1[a]"
+            # Loop audio to match video (loop=1 means play twice total)
+            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5,aloop=1:start=0[a]"
         else:
             af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
 
@@ -137,7 +138,13 @@ def process_single_video(video_path):
         print(f"✅ Saved: {out_path} (ENHANCED)")
         return out_path
     else:
-        print(f"❌ Failed: {result.stderr[:200]}")
+        print(f"❌ Failed to process video")
+        print(f"   FFmpeg error output:")
+        # Print error in chunks to avoid truncation
+        error_lines = result.stderr.split('\n')
+        for line in error_lines[:30]:  # Print first 30 lines of error
+            if line.strip():
+                print(f"   {line}")
         return None
 
 
