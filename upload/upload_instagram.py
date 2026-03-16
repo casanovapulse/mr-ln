@@ -118,10 +118,11 @@ def upload_to_instagram(video_path, caption, is_story=False):
             'video_url': video_url,
             'access_token': access_token
         }
-        
+
         if not is_story:
             container_params['caption'] = caption_limited
-            container_params['share_to_feed'] = 'true'
+            # Only post to Reels tab, NOT to main profile feed
+            container_params['share_to_feed'] = 'false'
             container_params['thumb_offset'] = '5000' # Set thumbnail to 5 seconds in to avoid dark start
         
         container_response = requests.post(container_url, params=container_params, timeout=60)
