@@ -567,5 +567,22 @@
         },
         "published_at": "2026-03-23T09:01:29.670944",
         "publish_count": 1
+    },
+    {
+        "video_name": "grok-video-36ad6d01-41f6-4fa1-bb7c-a74dd428c865.mp4",
+        "metadata": {
+            "title": "Stunning walk!",
+            "description": "A walk to remember... \ud83d\udd25 #fashion #walking #model #beautiful",
+            "success_flags": {
+                "instagram_reel": true,
+                "instagram_story": true,
+                "facebook_reel": true,
+                "facebook_story": true,
+                "threads": true,
+                "youtube": false
+            }
+        },
+        "published_at": "2026-03-23T16:59:57.540985",
+        "publish_count": 1
     }
 ]
