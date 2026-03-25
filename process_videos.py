@@ -3,6 +3,9 @@ Video Processor - Quality Enhancement (Video + Audio)
 1. Upscale video to 1080x1920 with quality enhancement
 2. Remove watermark (bottom-right corner)
 3. ENHANCE AUDIO (normalize volume, improve clarity) - if audio exists
+
+NOTE: Processed videos are saved to the same folder as input (Videos/).
+No permanent Processed_Videos folder - everything is temporary and cleaned up after upload.
 """
 import os
 import subprocess
@@ -13,13 +16,14 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 input_dir = "Videos"
-output_dir = "Processed_Videos"
+# Save processed video to same folder as input (no separate Processed_Videos folder)
+output_dir = "Videos"
 
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+if not os.path.exists(input_dir):
+    os.makedirs(input_dir)
 
 
-def process_single_video(video_path):
+def process_single_video(video_path, force_overwrite=False):
     if not os.path.exists(video_path):
         print(f"Error: Video not found: {video_path}")
         return None
@@ -27,9 +31,13 @@ def process_single_video(video_path):
     filename = os.path.basename(video_path)
     out_path = os.path.join(output_dir, filename)
 
-    if os.path.exists(out_path):
+    if os.path.exists(out_path) and not force_overwrite:
         print(f"Skipping {filename} - already processed")
         return out_path
+    
+    if os.path.exists(out_path) and force_overwrite:
+        print(f"Overwriting {filename} - force reprocessing")
+        os.remove(out_path)
 
     cmd_probe = [
         "ffprobe", "-v", "error",
@@ -146,6 +154,48 @@ def process_single_video(video_path):
             if line.strip():
                 print(f"   {line}")
         return None
+
+
+def process_all_videos(video_list=None, force_overwrite=False):
+    """
+    Process multiple videos.
+
+    Args:
+        video_list: List of video paths to process. If None, processes all in Videos folder.
+        force_overwrite: If True, reprocesses videos even if they exist in output folder.
+
+    Returns:
+        List of processed video paths
+    """
+    processed = []
+
+    if video_list:
+        # Process specific videos from the list
+        for vid_path in video_list:
+            result = process_single_video(vid_path, force_overwrite=force_overwrite)
+            if result:
+                processed.append(result)
+    else:
+        # Process all videos in input directory
+        videos = [f for f in os.listdir(input_dir) if f.endswith('.mp4')]
+        print(f"Found {len(videos)} videos to process.")
+
+        for filename in videos:
+            vid_path = os.path.join(input_dir, filename)
+            result = process_single_video(vid_path, force_overwrite=force_overwrite)
+            if result:
+                processed.append(result)
+
+    if processed:
+        print("\n" + "=" * 60)
+        print(f"PROCESSING COMPLETE - {len(processed)} VIDEO(S) ENHANCED")
+        print("=" * 60)
+    else:
+        print("\n" + "=" * 60)
+        print("NO VIDEOS PROCESSED")
+        print("=" * 60)
+    
+    return processed
 
 
 def main():

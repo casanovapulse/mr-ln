@@ -22,8 +22,58 @@ except ImportError as e:
     # Still want to proceed or stop?
     pass
 
-PROCESSED_DIR = "Processed_Videos"
+PROCESSED_DIR = "Videos"  # Temporary folder for downloads
 PUBLISHED_LOG = "published_videos.json"
+ROTATION_LOG = "rotation_state.json"
+
+def get_rotation_state():
+    """Get the current rotation state (last posted OLD video index)."""
+    if os.path.exists(ROTATION_LOG):
+        with open(ROTATION_LOG, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {"last_index": -1}
+    return {"last_index": -1}
+
+
+def save_rotation_state(last_index):
+    """Save the current rotation state."""
+    state = {"last_index": last_index, "updated_at": datetime.now().isoformat()}
+    with open(ROTATION_LOG, 'w', encoding='utf-8') as f:
+        json.dump(state, f, indent=4)
+
+
+def get_next_video_for_rotation(all_video_names):
+    """
+    Get the NEXT video name from Dropbox for rotation.
+    Tracks last posted video and returns the next one in sequence.
+    Never returns the same video twice in a row.
+    
+    Args:
+        all_video_names: List of ALL video names from Dropbox
+        
+    Returns:
+        Video name (string) or None if no videos
+    """
+    if not all_video_names:
+        return None
+    
+    # Get current rotation state
+    state = get_rotation_state()
+    last_index = state.get("last_index", -1)
+    
+    # Calculate next index (cycle through all videos)
+    next_index = (last_index + 1) % len(all_video_names)
+    
+    # Get the video name at next index
+    video_name = all_video_names[next_index]
+    
+    # Save new rotation state
+    save_rotation_state(next_index)
+    
+    print(f"📊 Rotation: Video {next_index + 1}/{len(all_video_names)} (last was #{last_index + 1})")
+    return video_name
 
 def get_already_published():
     if os.path.exists(PUBLISHED_LOG):
@@ -34,106 +84,37 @@ def get_already_published():
                 return []
     return []
 
-
-def get_publish_count(video_name):
-    """Get how many times a video has been published."""
-    published = get_already_published()
-    count = sum(1 for item in published if item.get('video_name') == video_name)
-    return count
-
-
-def get_least_published_video(all_videos):
-    """
-    Select video with lowest publish count.
-    If all have same count, select randomly from least published.
-    """
-    import random
-    
-    if not all_videos:
-        return None, None
-    
-    # Get publish count for each video
-    video_counts = []
-    for vid_path in all_videos:
-        vid_name = os.path.basename(vid_path)
-        count = get_publish_count(vid_name)
-        video_counts.append((vid_path, vid_name, count))
-    
-    # Find minimum count
-    min_count = min(count for _, _, count in video_counts)
-    
-    # Get all videos with minimum count
-    least_published = [(path, name) for path, name, count in video_counts if count == min_count]
-    
-    # Select randomly from least published
-    if least_published:
-        selected_path, selected_name = random.choice(least_published)
-        print(f"📊 Publish count: {min_count} time(s)")
-        return selected_path, selected_name
-    
-    return None, None
-
-
 def mark_as_published(video_name, metadata):
     published = get_already_published()
     published.append({
         "video_name": video_name,
-        "metadata": metadata,
-        "published_at": datetime.now().isoformat(),
-        "publish_count": get_publish_count(video_name) + 1
+        "metadata": metadata
     })
     with open(PUBLISHED_LOG, 'w', encoding='utf-8') as f:
         json.dump(published, f, indent=4)
 
-def select_video(specific_video=None, use_fallback=False):
+def select_video(specific_video=None):
     """
     Select a video to publish.
-    
-    Priority:
-    1. If specific_video provided, use that
-    2. If use_fallback=True, select from least-published local videos
-    3. Otherwise, select first unpublished video
+    Only used when a specific video path is provided.
     
     Returns:
         (video_path, video_name) or (None, None)
     """
     published = [item["video_name"] for item in get_already_published()]
-    all_videos = sorted(glob.glob(os.path.join(PROCESSED_DIR, "*.mp4")))
 
     if specific_video:
-        # specific_video might be a full path or just a filename
+        # specific_video is a full path to processed video
         if os.path.exists(specific_video):
-            # It's a full path
             vid_path = specific_video
             name = os.path.basename(specific_video)
-        else:
-            # It's just a filename, join with PROCESSED_DIR
-            vid_path = os.path.join(PROCESSED_DIR, specific_video)
-            name = specific_video
-
-        if os.path.exists(vid_path):
+            
             if name in published:
-                print(f"⚠️ Video {name} was flagged as already published, but proceeding anyway as explicitly requested.")
+                print(f"🔄 Video {name} was already published - Re-publishing (recycling)")
             return vid_path, name
         else:
             print(f"❌ Error: Specific video {name} not found")
             return None, None
-
-    # If fallback mode, select least published video
-    if use_fallback and all_videos:
-        print("\n🔄 FALLBACK MODE: No new videos, selecting from existing library...")
-        return get_least_published_video(all_videos)
-
-    # Normal mode: find first unpublished video
-    for vid in all_videos:
-        name = os.path.basename(vid)
-        if name not in published:
-            return vid, name
-    
-    # All videos published - activate fallback
-    if all_videos:
-        print("\n⚠️ All videos have been published. Activating fallback mode...")
-        return get_least_published_video(all_videos)
     
     return None, None
 
@@ -151,7 +132,7 @@ def generate_caption():
     chosen_vibe = random.choice(vibes)
 
     prompt = (
-        f"Write a completely unique, funny, and engaging LONG title and LONG description for a short video "
+        f"Write a completely unique and engaging LONG title and LONG description for a short video "
         f"of Margot Robbie. In the video, Margot Robbie is a beautiful actress and model walking, "
         f"posing, or being interviewed on the red carpet. Speak in the third person about Margot Robbie. "
         f"Make the vibe {chosen_vibe}. "
@@ -161,7 +142,7 @@ def generate_caption():
         f"Return ONLY a valid JSON object in this format: {{\"title\": \"<title>\", \"description\": \"<description>\"}} "
         f"Do not include any other text or markdown block backticks."
     )
-    
+
     url = "https://gen.pollinations.ai/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -173,17 +154,17 @@ def generate_caption():
         "temperature": 0.9,
         "seed": random.randint(1, 999999)
     }
-    
+
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
         data = response.json()
         content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-        
+
         # Clean up any potential markdown block markers
         content = content.replace("```json", "").replace("```", "").strip()
         result = json.loads(content)
-        
+
         return result.get("title", "Stunning walk!"), result.get("description", "A beautiful walk... #fashion")
     except Exception as e:
         print(f"Error generating caption: {e}")
@@ -194,23 +175,25 @@ def main():
     print("🚀 DAILY AUTOMATION STARTING")
     print("=" * 60)
 
-    specific_video = sys.argv[1] if len(sys.argv) > 1 else None
-    
-    # If no specific video, enable fallback mode
-    use_fallback = specific_video is None
-    
-    video_path, video_name = select_video(specific_video, use_fallback)
+    # Get specific video if provided
+    specific_video = None
+    for arg in sys.argv[1:]:
+        if not arg.startswith("--"):
+            specific_video = arg
+            break
+
+    video_path, video_name = select_video(specific_video)
     if not video_path:
-        print("✅ No videos found to publish. Exiting.")
+        print("✅ No video provided. Exiting.")
         return
 
     print(f"👉 Selected Video: {video_name}")
     print("🧠 Generating caption via Pollination AI...")
     title, description = generate_caption()
-    
+
     print(f"📝 Title: {title}")
     print(f"📝 Description:\n{description}")
-    
+
     # Combined caption for platforms that use a single text field
     combined_caption = f"{title}\n\n{description}"
 
@@ -227,32 +210,32 @@ def main():
     print("\n" + "=" * 60)
     print("📱 PLATFORM AVAILABILITY CHECK")
     print("=" * 60)
-    
+
     instagram_available = bool(os.getenv('INSTAGRAM_ACCESS_TOKEN') or os.getenv('FACEBOOK_ACCESS_TOKEN'))
     facebook_available = bool(os.getenv('FACEBOOK_ACCESS_TOKEN'))
     threads_available = bool(os.getenv('THREADS_ACCESS_TOKEN'))
     youtube_available = bool(os.getenv('YT_REFRESH_TOKEN'))
-    
+
     if instagram_available:
         print("✅ Instagram: Configured")
     else:
         print("⚠️  Instagram: Not configured - will skip")
-    
+
     if facebook_available:
         print("✅ Facebook: Configured")
     else:
         print("⚠️  Facebook: Not configured - will skip")
-    
+
     if threads_available:
         print("✅ Threads: Configured")
     else:
         print("⚠️  Threads: Not configured - will skip")
-    
+
     if youtube_available:
         print("✅ YouTube: Configured")
     else:
         print("⚠️  YouTube: Not configured - will skip")
-    
+
     print("=" * 60)
 
     # Instagram Reels
@@ -310,8 +293,8 @@ def main():
             print(f"❌ YouTube upload failed: {e}")
     else:
         print("⏭️  Skipping YouTube (no credentials)")
-        
-    # Record as published regardless of partial success, 
+
+    # Record as published regardless of partial success,
     # to avoid repeating the same video. Alternatively, only record if fully successful.
     print("\n✅ Marking video as published.")
     mark_as_published(video_name, {
@@ -319,19 +302,19 @@ def main():
         "description": description,
         "success_flags": success_flags
     })
-    
+
     # Move the published video to Published_Videos folder
     published_dir = "Published_Videos"
     if not os.path.exists(published_dir):
         os.makedirs(published_dir)
-        
+
     try:
         dest_path = os.path.join(published_dir, video_name)
         shutil.move(video_path, dest_path)
         print(f"📦 Moved published video to {dest_path}")
     except Exception as e:
         print(f"❌ Failed to move published video: {e}")
-    
+
     print("🎉 DAILY AUTOMATION COMPLETE")
 
 if __name__ == "__main__":

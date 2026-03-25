@@ -6,28 +6,66 @@ Automated video processing and social media publishing pipeline. Fetches videos 
 
 - **GitHub Actions Automation**: Runs 3 times a day automatically
 - **Dropbox Integration**: Automatically fetch videos from your Dropbox folder
-- **Smart Processing**: Only processes new videos, skips already processed ones
+- **Smart Processing**: Only downloads and processes videos when needed
 - **Video Processing**:
   - Upscale to 1080x1920 (vertical format for Reels/Shorts/TikTok)
   - Watermark removal (bottom-right corner)
-  - Keeps original audio
+  - Audio enhancement (normalize volume, improve clarity)
 - **Multi-Platform Upload**:
   - Instagram Reels & Stories
   - Facebook Reels & Stories
   - Threads
   - YouTube Shorts
+- **Continuous Mode**: Runs forever by re-downloading and reprocessing old videos
 
 ## 🔄 Automation Workflow
 
 ```
-GitHub Actions (3x daily)
+GitHub Actions (3 times daily)
         ↓
-Check Dropbox /margot
+Check Dropbox video NAMES (no download)
         ↓
-New video found?
-   ├─ YES → Download → Process → Upload → Mark as published
-   └─ NO  → Exit (nothing to do)
+New videos exist?
+   ├─ YES → Download NEW → Process → Upload → Mark as published ✅
+   └─ NO  → Get NEXT old video (rotation) → Download → Process → Upload ✅
 ```
+
+### How It Works (Step by Step)
+
+**Scenario 1: New Video in Dropbox**
+```
+1. GitHub Actions runs (3x daily)
+2. Gets video NAMES from Dropbox (no download yet)
+3. Compares names with published_videos.json
+4. Finds NEW video (not in published list)
+5. Downloads ONLY new video
+6. Processes video (upscale + watermark removal)
+7. Uploads to all social media platforms
+8. Marks as published in published_videos.json
+9. Cleans up downloaded files (saves space)
+```
+
+**Scenario 2: No New Videos (Continuous Mode)**
+```
+1. GitHub Actions runs (3x daily)
+2. Gets video NAMES from Dropbox
+3. All videos already published
+4. Gets NEXT video name from rotation (tracks in rotation_state.json)
+5. Downloads that video
+6. Reprocesses video (fresh upscale + watermark removal)
+7. Uploads to all social media platforms
+8. Marks as published (increment count)
+9. Cleans up downloaded files (saves space)
+10. Next run: Gets DIFFERENT video (never same twice in a row)
+```
+
+### Why This Works Forever
+
+✅ **No storage needed** - Everything from Dropbox  
+✅ **Rotation tracking** - `rotation_state.json` tracks last posted video  
+✅ **Never repeats** - Always gets next video in sequence  
+✅ **Fresh processing** - Every video reprocessed each time  
+✅ **Clean** - Downloads deleted after upload (saves GitHub space)  
 
 ## 📋 Prerequisites
 
@@ -48,10 +86,7 @@ pip install -r requirements.txt
 
 **Windows:**
 ```bash
-# Using winget
 winget install FFmpeg
-
-# Or download from https://ffmpeg.org/download.html
 ```
 
 **Linux:**
@@ -64,45 +99,39 @@ sudo apt install ffmpeg
 brew install ffmpeg
 ```
 
-### 3. Configure Dropbox (ONE TIME SETUP FOR AUTOMATION)
+### 3. Configure Dropbox
 
 **Step A: Create Dropbox App**
 1. Go to [Dropbox App Console](https://www.dropbox.com/developers/apps)
 2. Click "Create app"
 3. Choose:
-   - **Scoped access** (not API generation)
+   - **Scoped access**
    - **Full Dropbox** access
 4. Name your app and create it
 
-**Step B: Get App Key and Secret**
-1. In your app settings, find:
-   - **App key** (copy to `.env` as `DROPBOX_APP_KEY`)
-   - **App secret** (copy to `.env` as `DROPBOX_APP_SECRET`)
+**Step B: Get Credentials**
+1. Copy **App key** → `DROPBOX_APP_KEY`
+2. Copy **App secret** → `DROPBOX_APP_SECRET`
 
-**Step C: Generate Refresh Token (NEVER EXPIRES)**
-1. Run the token generator:
+**Step C: Generate Refresh Token**
+1. Run:
    ```bash
    py generate_dropbox_token.py
    ```
-2. Open the URL it gives you
-3. Authorize the app
-4. Copy the authorization code
-5. Paste it back in the terminal
-6. Copy the `DROPBOX_REFRESH_TOKEN` it gives you
-7. Add to `.env`:
-   ```env
-   DROPBOX_APP_KEY=your_app_key
-   DROPBOX_APP_SECRET=your_app_secret
-   DROPBOX_REFRESH_TOKEN=the_refresh_token_you_just_got
-   DROPBOX_ACCESS_TOKEN=the_access_token_you_just_got
-   DROPBOX_FOLDER=/margot
-   ```
+2. Follow the prompts
+3. Copy `DROPBOX_REFRESH_TOKEN` to `.env`
 
-**That's it! The refresh token never expires, so your automation will run forever.**
+**Step D: Add to `.env`**
+```env
+DROPBOX_APP_KEY=your_app_key
+DROPBOX_APP_SECRET=your_app_secret
+DROPBOX_REFRESH_TOKEN=the_refresh_token
+DROPBOX_FOLDER=/margot
+```
 
-### 4. Set Up GitHub Actions (For Cloud Automation)
+### 4. Set Up GitHub Actions
 
-**Step A: Push code to GitHub**
+**Step A: Push to GitHub**
 ```bash
 git add .
 git commit -m "Setup video automation"
@@ -110,182 +139,158 @@ git push
 ```
 
 **Step B: Add GitHub Secrets**
-1. Go to your GitHub repository
-2. Click **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Add all secrets from `.github/SECRETS_SETUP.md`
+Go to **Settings** → **Secrets and variables** → **Actions**
 
 **Required secrets:**
 - `DROPBOX_APP_KEY`
 - `DROPBOX_APP_SECRET`
 - `DROPBOX_REFRESH_TOKEN`
+- `POLLINATIONS_API_KEY`
+
+**Optional secrets:**
 - `INSTAGRAM_ACCESS_TOKEN`
 - `INSTAGRAM_ACCOUNT_ID`
 - `FACEBOOK_ACCESS_TOKEN`
 - `FACEBOOK_PAGE_ID`
 - `THREADS_ACCESS_TOKEN`
 - `THREADS_USER_ID`
-- `POLLINATIONS_API_KEY`
+- `YT_CLIENT_ID`
+- `YT_CLIENT_SECRET`
+- `YT_REFRESH_TOKEN`
 
 **Step C: Workflow runs automatically**
-- Runs 3 times a day (8:00 AM, 4:00 PM, 12:00 AM UTC)
-- You can also trigger manually from **Actions** tab
-
-### 5. Configure Social Media Credentials
-
-Edit the `.env` file with your API credentials:
-
-```env
-# Instagram
-INSTAGRAM_ACCESS_TOKEN=
-INSTAGRAM_ACCOUNT_ID=
-
-# Facebook
-FACEBOOK_ACCESS_TOKEN=
-FACEBOOK_PAGE_ID=
-
-# YouTube
-YT_CLIENT_ID=
-YT_CLIENT_SECRET=
-YT_REFRESH_TOKEN=
-
-# Threads
-THREADS_ACCESS_TOKEN=
-THREADS_USER_ID=
-
-# AI Caption Generation
-POLLINATIONS_API_KEY=
-AI_MODEL=openai
-```
+- Runs 3 times a day: 8:00 AM, 4:00 PM, 12:00 AM UTC
+- Manual trigger from **Actions** tab
 
 ## 📁 Folder Structure
 
 ```
 .
-├── Videos/                 # Input folder (videos from Dropbox)
-├── Processed_Videos/       # Processed videos (upscaled, watermark removed)
-├── Published_Videos/       # Already published videos
-├── dropbox_fetch.py        # Dropbox integration
+├── Videos/                 # Temporary download folder (cleaned after upload)
+├── published_videos.json   # Track published videos
+├── rotation_state.json     # Track rotation position
+├── dropbox_fetch.py        # Dropbox integration (name check + download)
 ├── process_videos.py       # Video processing (upscale + delogo)
 ├── daily_publisher.py      # Social media uploader
 ├── auto_pipeline.py        # Main automation script
-├── .env                    # Environment variables (API keys)
-└── requirements.txt        # Python dependencies
+├── .env                    # Environment variables
+└── requirements.txt        # Dependencies
 ```
+
+**Note:** No `Processed_Videos` folder! Everything is temporary and cleaned up after upload.
 
 ## 🎯 Usage
 
-### GitHub Actions (Automated - Recommended)
+### Automatic (GitHub Actions)
 
-Once set up, the workflow runs automatically **3 times a day**:
+Runs 3 times daily:
 - **8:00 AM UTC**
 - **4:00 PM UTC**
 - **12:00 AM UTC**
 
 **Workflow:**
 1. Add video to Dropbox `/margot` folder
-2. GitHub Actions will automatically:
-   - Download the video
-   - Process it (upscale + watermark removal)
-   - Upload to all social media platforms
-   - Mark as published
+2. GitHub Actions automatically:
+   - Checks video names (no download)
+   - Downloads only what's needed
+   - Processes and uploads
+   - Cleans up temporary files
 
-### Manual Local Run
-
-Run the complete pipeline (Dropbox → Process → Upload):
+### Manual Run
 
 ```bash
 python auto_pipeline.py
-```
-
-### Individual Steps
-
-**Fetch from Dropbox only:**
-```bash
-python dropbox_fetch.py
-```
-
-**Process videos only:**
-```bash
-python process_videos.py
-```
-
-**Publish to social media only:**
-```bash
-python daily_publisher.py
-```
-
-**Upload specific video to Facebook:**
-```bash
-python upload_facebook_only.py path/to/video.mp4
 ```
 
 ## ⚙️ Customization
 
 ### Watermark Position
 
-Edit `process_videos.py` to adjust watermark removal area:
-
+Edit `process_videos.py`:
 ```python
-# Adjust these values based on your watermark size/position
-w_delogo = int(180 * (width / 720))  # Width of watermark area
-h_delogo = int(80 * (height / 1280))  # Height of watermark area
+w_delogo = 180  # Width of watermark area
+h_delogo = 80   # Height of watermark area
+x_delogo = 1080 - w_delogo - 5  # Position from right
+y_delogo = 1920 - h_delogo - 5  # Position from bottom
 ```
 
 ### Output Resolution
 
-Change the upscale resolution in `process_videos.py`:
-
+Edit `process_videos.py`:
 ```python
-# Current: 1080x1920 (vertical format)
-vf_filter = f"...scale=1080:1920:flags=spline..."
+# Current: 1080x1920 (vertical)
+vf_filter = f"...scale=1080:1920:flags=lanczos..."
 ```
 
-### Delete from Dropbox After Download
+## 🔄 Rotation System
 
-Set `delete_after_download=True` in `auto_pipeline.py`:
+### How Rotation Works
 
-```python
-downloaded = fetch_videos_from_dropbox(delete_after_download=True)
+```
+Run 1: Video 1/37 → Download → Process → Upload → Save state (index=0)
+Run 2: Video 2/37 → Download → Process → Upload → Save state (index=1)
+Run 3: Video 3/37 → Download → Process → Upload → Save state (index=2)
+...
+Run 37: Video 37/37 → Download → Process → Upload → Save state (index=36)
+Run 38: Video 1/37 → (cycles back to start)
 ```
 
-## 🔄 GitHub + Dropbox Workflow
+### Tracking Files
 
-1. **Push code to GitHub** (no videos in repo)
-2. **Add videos to Dropbox** `/videos_to_process` folder
-3. **Run pipeline** on your server/machine:
-   ```bash
-   python auto_pipeline.py
-   ```
-4. Videos are automatically:
-   - Downloaded from Dropbox
-   - Processed (upscaled + watermark removed)
-   - Uploaded to all social media platforms
-   - Moved to `Published_Videos/` folder
+**`rotation_state.json`** (auto-generated):
+```json
+{
+  "last_index": 5,
+  "updated_at": "2025-03-25T14:00:00"
+}
+```
+
+**`published_videos.json`** (auto-generated):
+```json
+[
+  {
+    "video_name": "video1.mp4",
+    "metadata": {
+      "title": "Amazing walk!",
+      "description": "...",
+      "success_flags": {...}
+    },
+    "published_at": "2025-03-25T10:00:00"
+  }
+]
+```
 
 ## 🛠️ Troubleshooting
 
 ### FFmpeg not found
-Ensure FFmpeg is installed and in your system PATH.
+```bash
+ffmpeg -version  # Check installation
+winget install FFmpeg  # Install if missing
+```
 
 ### Dropbox connection error
-Verify your `DROPBOX_ACCESS_TOKEN` is valid and hasn't expired.
+- Verify `DROPBOX_REFRESH_TOKEN` in `.env`
+- Check Dropbox app permissions
 
-### Upload failures
-Check that all API tokens in `.env` are valid and haven't expired.
+### Rotation stuck
+Delete `rotation_state.json` to reset rotation.
 
-### Watermark not removed correctly
-Adjust the watermark position/size parameters in `process_videos.py`.
+### No videos found
+- Ensure videos are in Dropbox `/margot` folder
+- Check `DROPBOX_FOLDER` in `.env`
 
 ## 📝 Notes
 
-- Videos are kept in the `Videos/` folder after processing (not deleted from Dropbox by default)
-- Already processed videos are tracked in `published_videos.json`
-- Original audio is preserved (no music addition)
-- Processing can take several minutes per video depending on length and quality
+- **No permanent storage** - All files temporary, cleaned after upload
+- **Rotation is automatic** - Cycles through all videos before repeating
+- **New videos always priority** - New videos processed first
+- **Fresh processing** - Every video reprocessed each time (new AI caption)
+- **Original audio preserved** - Enhanced but not replaced
 
 ## 🚨 Important
 
-- Keep your `.env` file private (add to `.gitignore`)
+- Keep `.env` private (add to `.gitignore`)
 - Never commit API tokens to GitHub
-- Test with a single video before running bulk operations
+- Test with one video before bulk operations
+- Rotation ensures variety - never same video twice in a row
+- GitHub Actions starts fresh each run - no persistent storage
