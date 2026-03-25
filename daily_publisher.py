@@ -6,10 +6,11 @@ import shutil
 import sys
 from dotenv import load_dotenv
 from pathlib import Path
-from datetime import datetime
 
 # Load environment variables
-load_dotenv()
+from pathlib import Path
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path, override=True)
 
 # Import upload functions
 try:
@@ -22,58 +23,8 @@ except ImportError as e:
     # Still want to proceed or stop?
     pass
 
-PROCESSED_DIR = "Videos"  # Temporary folder for downloads
+PROCESSED_DIR = "Processed_Videos"
 PUBLISHED_LOG = "published_videos.json"
-ROTATION_LOG = "rotation_state.json"
-
-def get_rotation_state():
-    """Get the current rotation state (last posted OLD video index)."""
-    if os.path.exists(ROTATION_LOG):
-        with open(ROTATION_LOG, 'r', encoding='utf-8') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {"last_index": -1}
-    return {"last_index": -1}
-
-
-def save_rotation_state(last_index):
-    """Save the current rotation state."""
-    state = {"last_index": last_index, "updated_at": datetime.now().isoformat()}
-    with open(ROTATION_LOG, 'w', encoding='utf-8') as f:
-        json.dump(state, f, indent=4)
-
-
-def get_next_video_for_rotation(all_video_names):
-    """
-    Get the NEXT video name from Dropbox for rotation.
-    Tracks last posted video and returns the next one in sequence.
-    Never returns the same video twice in a row.
-    
-    Args:
-        all_video_names: List of ALL video names from Dropbox
-        
-    Returns:
-        Video name (string) or None if no videos
-    """
-    if not all_video_names:
-        return None
-    
-    # Get current rotation state
-    state = get_rotation_state()
-    last_index = state.get("last_index", -1)
-    
-    # Calculate next index (cycle through all videos)
-    next_index = (last_index + 1) % len(all_video_names)
-    
-    # Get the video name at next index
-    video_name = all_video_names[next_index]
-    
-    # Save new rotation state
-    save_rotation_state(next_index)
-    
-    print(f"📊 Rotation: Video {next_index + 1}/{len(all_video_names)} (last was #{last_index + 1})")
-    return video_name
 
 def get_already_published():
     if os.path.exists(PUBLISHED_LOG):
@@ -94,97 +45,123 @@ def mark_as_published(video_name, metadata):
         json.dump(published, f, indent=4)
 
 def select_video(specific_video=None):
-    """
-    Select a video to publish.
-    Only used when a specific video path is provided.
-    
-    Returns:
-        (video_path, video_name) or (None, None)
-    """
     published = [item["video_name"] for item in get_already_published()]
+    all_videos = sorted(glob.glob(os.path.join(PROCESSED_DIR, "*.mp4")))
 
     if specific_video:
-        # specific_video is a full path to processed video
+        # specific_video might be a full path or just a filename
         if os.path.exists(specific_video):
+            # It's a full path
             vid_path = specific_video
             name = os.path.basename(specific_video)
-            
+        else:
+            # It's just a filename, join with PROCESSED_DIR
+            vid_path = os.path.join(PROCESSED_DIR, specific_video)
+            name = specific_video
+
+        if os.path.exists(vid_path):
+            # For reposts, we allow already published videos
             if name in published:
-                print(f"🔄 Video {name} was already published - Re-publishing (recycling)")
+                print(f"ℹ️ Reposting video: {name}")
             return vid_path, name
         else:
             print(f"❌ Error: Specific video {name} not found")
             return None, None
-    
+
+    for vid in all_videos:
+        name = os.path.basename(vid)
+        if name not in published:
+            return vid, name
     return None, None
 
 def generate_caption():
+    """
+    Generate title and description for Margot Robbie video.
+    Uses hardcoded viral captions - always works, no API dependency.
+    All hashtags are lowercase, max 5 per post.
+    """
     import random
-    import time
 
-    api_key = os.getenv("POLLINATIONS_API_KEY")
-    model = os.getenv("AI_MODEL", "openai")
-    if not api_key:
-        print("Warning: POLLINATIONS_API_KEY not found. Using default captions.")
-        return "Stunning walk!", "A walk to remember... 🔥 #fashion #walking #model #beautiful"
-
-    vibes = ["sassy and confident", "mysterious and elegant", "playful and cheeky", "high-fashion boss", "romantic and dreamy"]
-    chosen_vibe = random.choice(vibes)
-
-    prompt = (
-        f"Write a completely unique and engaging LONG title and LONG description for a short video "
-        f"of Margot Robbie. In the video, Margot Robbie is a beautiful actress and model walking, "
-        f"posing, or being interviewed on the red carpet. Speak in the third person about Margot Robbie. "
-        f"Make the vibe {chosen_vibe}. "
-        f"Make it interaction-bait to gain followers - ask questions, encourage comments, and create engagement. "
-        f"The description should be LONG and detailed (at least 3-4 sentences) perfect for Facebook and Instagram. "
-        f"Include relevant hashtags in ALL LOWERCASE like #margotrobbie #actress #hollywood #redcarpet #fashion #model #celebrity #style. "
-        f"Return ONLY a valid JSON object in this format: {{\"title\": \"<title>\", \"description\": \"<description>\"}} "
-        f"Do not include any other text or markdown block backticks."
-    )
-
-    url = "https://gen.pollinations.ai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.9,
-        "seed": random.randint(1, 999999)
-    }
-
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-
-        # Clean up any potential markdown block markers
-        content = content.replace("```json", "").replace("```", "").strip()
-        result = json.loads(content)
-
-        return result.get("title", "Stunning walk!"), result.get("description", "A beautiful walk... #fashion")
-    except Exception as e:
-        print(f"Error generating caption: {e}")
-        return "Stunning walk!", "A beautiful walk... #fashion #model"
+    # 15 Hardcoded viral captions about Margot Robbie
+    viral_captions = [
+        {
+            "title": "Margot Robbie Red Carpet Magic ✨",
+            "description": "Margot Robbie absolutely slaying the red carpet! That confident walk, the stunning smile, pure Hollywood royalty energy. Who else thinks she's one of the most elegant actresses of our generation? Drop a 🔥 if you agree! #margotrobbie #redcarpet #hollywood #actress #glam"
+        },
+        {
+            "title": "Margot Robbie Serving Looks 💫",
+            "description": "Margot Robbie walking into our hearts like... This Australian queen never misses! From Barbie to Oscar winner, she's redefining Hollywood elegance. What's your favorite Margot Robbie movie? Tell us below! #margotrobbie #barbie #oscars #celebrity #style"
+        },
+        {
+            "title": "Queen Margot Doing Queen Things 👑",
+            "description": "Margot Robbie proving once again why she's A-list royalty! That poise, that grace, that IT factor nobody can replicate. Australian representation at its finest! Double tap if Margot is your icon! #margotrobbie #australian #queen #icon #fashion"
+        },
+        {
+            "title": "Margot Robbie's Iconic Walk 🌟",
+            "description": "Can we talk about how Margot Robbie owns every single step she takes? Pure confidence, pure talent, pure star power! From Wolf of Wall Street to Barbie - what a journey! Comment your fave role! #margotrobbie #wolfwallstreet #barbie #star #cinema"
+        },
+        {
+            "title": "Margot Being Absolutely Iconic 💎",
+            "description": "Margot Robbie serving pure elegance and we're here for it! This woman can act, produce, AND slay every red carpet. Is there anything she can't do? Show some love for this multi-talented queen! #margotrobbie #talented #producer #actress #goals"
+        },
+        {
+            "title": "Hollywood's Golden Girl ✨",
+            "description": "Margot Robbie shining bright like the Hollywood star she is! That smile could light up the entire red carpet. From Harley Quinn to Barbie, she's given us ICONIC moments! What's your favorite? #margotrobbie #harleyquinn #hollywood #golden #smile"
+        },
+        {
+            "title": "Margot Robbie Confidence Level 💯",
+            "description": "Margot Robbie walking with the confidence of a main character because SHE IS! Leading lady energy through the roof! This Australian actress took over Hollywood and we're obsessed! #margotrobbie #confidence #maincharacter #leadinglady #obsessed"
+        },
+        {
+            "title": "Slay Queen Margot! 🔥",
+            "description": "Margot Robbie absolutely KILLING it as always! That walk, that look, that EVERYTHING! No wonder she's one of the most sought-after actresses in the world. Drop a 💖 for Margot! #margotrobbie #slay #killing #worldwide #stunning"
+        },
+        {
+            "title": "Margot's Red Carpet Moment 💫",
+            "description": "Margot Robbie making every red carpet moment unforgettable! Elegance, beauty, and talent all in one package. She's the complete package Hollywood needed! Who else is a lifelong fan? #margotrobbie #elegant #beautiful #talented #fan"
+        },
+        {
+            "title": "Margot Robbie Pure Glamour ✨",
+            "description": "Margot Robbie radiating pure glamour and sophistication! From Down Under to Hollywood domination - what an inspiration! She proves hard work and talent pay off! Share if you're inspired! #margotrobbie #glamour #inspiration #hollywood #success"
+        },
+        {
+            "title": "The One And Only Margot 👑",
+            "description": "There's Margot Robbie and then there's everyone else! This woman is in a league of her own. Acting chops, producing skills, and red carpet perfection! Tag a fellow Margot fan! #margotrobbie #oneandonly #unique #perfection #legend"
+        },
+        {
+            "title": "Margot Robbie Magic Hour 🌙",
+            "description": "Margot Robbie glowing like the superstar she is! Every appearance is a masterclass in elegance and charm. No wonder brands and directors flock to her! Comment your favorite Margot look! #margotrobbie #glowing #superstar #masterclass #charm"
+        },
+        {
+            "title": "Barbie Energy IRL 💖",
+            "description": "Margot Robbie IS Barbie in human form! That pink carpet energy, that perfect smile, that iconic presence! She made Barbie dreams come true and we're still living for it! #margotrobbie #barbie #iconic #dreams #perfect"
+        },
+        {
+            "title": "Margot's Power Walk 💪",
+            "description": "Margot Robbie power walking into another successful premiere like the BOSS she is! Producer, actress, entrepreneur - she does it all! What a woman! Show respect! #margotrobbie #boss #power #entrepreneur #respect"
+        },
+        {
+            "title": "Stunning Margot Moment 📸",
+            "description": "Another day, another stunning moment from Margot Robbie! She never has a bad look, never a bad performance, never a bad anything! Truly Hollywood perfection! Double tap for the queen! #margotrobbie #stunning #perfection #neverfails #queen"
+        }
+    ]
+    
+    # Select random caption from the viral list
+    selected = random.choice(viral_captions)
+    
+    print(f"  📝 Using hardcoded caption #{viral_captions.index(selected) + 1}/15")
+    
+    return selected["title"], selected["description"]
 
 def main():
     print("=" * 60)
     print("🚀 DAILY AUTOMATION STARTING")
     print("=" * 60)
 
-    # Get specific video if provided
-    specific_video = None
-    for arg in sys.argv[1:]:
-        if not arg.startswith("--"):
-            specific_video = arg
-            break
-
+    specific_video = sys.argv[1] if len(sys.argv) > 1 else None
     video_path, video_name = select_video(specific_video)
     if not video_path:
-        print("✅ No video provided. Exiting.")
+        print("✅ No new videos found to publish. Exiting.")
         return
 
     print(f"👉 Selected Video: {video_name}")
@@ -304,16 +281,25 @@ def main():
     })
 
     # Move the published video to Published_Videos folder
+    # ONLY if it's a NEW video (not a repost from Processed_Videos)
     published_dir = "Published_Videos"
     if not os.path.exists(published_dir):
         os.makedirs(published_dir)
 
-    try:
-        dest_path = os.path.join(published_dir, video_name)
-        shutil.move(video_path, dest_path)
-        print(f"📦 Moved published video to {dest_path}")
-    except Exception as e:
-        print(f"❌ Failed to move published video: {e}")
+    # Check if this is a repost (video is already in Processed_Videos)
+    # If reposting, DON'T move the file - keep it in Processed_Videos for future reposts
+    video_in_processed = os.path.join(PROCESSED_DIR, video_name)
+    is_repost = os.path.exists(video_in_processed) and os.path.samefile(video_path, video_in_processed)
+
+    if is_repost:
+        print(f"♻️ Repost: Keeping video in Processed_Videos (available for future reposts)")
+    else:
+        try:
+            dest_path = os.path.join(published_dir, video_name)
+            shutil.move(video_path, dest_path)
+            print(f"📦 Moved published video to {dest_path}")
+        except Exception as e:
+            print(f"❌ Failed to move published video: {e}")
 
     print("🎉 DAILY AUTOMATION COMPLETE")
 

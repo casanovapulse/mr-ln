@@ -1,14 +1,15 @@
 """
 Main Automation Pipeline for GitHub Actions
-1. Check Dropbox for NEW videos (by name only)
-2. If new videos exist → Download → Process → Upload
-3. If NO new videos → Re-download OLD video → Reprocess → Upload (rotation)
+1. Fetch ONE video from Dropbox
+2. Process (upscale + remove watermark)
+3. Upload to social media platforms
 
-CONTINUOUS MODE: Runs forever by re-downloading and reprocessing old videos.
-No local storage needed - everything from Dropbox.
+IF NO NEW VIDEOS: Repost already processed videos (with randomness & frequency tracking)
 """
 import os
 import sys
+import random
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -18,116 +19,125 @@ if sys.platform == 'win32':
 
 load_dotenv()
 
+PROCESSED_DIR = "Processed_Videos"
+PUBLISHED_LOG = "published_videos.json"
+
+
+def get_published_history():
+    """Get full publishing history with repost counts."""
+    if os.path.exists(PUBLISHED_LOG):
+        with open(PUBLISHED_LOG, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return []
+    return []
+
+
+def get_repost_counts():
+    """Count how many times each video has been posted."""
+    history = get_published_history()
+    counts = {}
+    for entry in history:
+        video_name = entry.get('video_name', '')
+        counts[video_name] = counts.get(video_name, 0) + 1
+    return counts
+
+
+def select_random_processed_video():
+    """
+    Select a random processed video, prioritizing less-posted ones.
+    Returns path to selected video or None if no videos available.
+    """
+    if not os.path.exists(PROCESSED_DIR):
+        print(f"  ⚠️  Processed_Videos folder not found")
+        return None
+
+    all_videos = [f for f in os.listdir(PROCESSED_DIR) if f.endswith('.mp4')]
+
+    if not all_videos:
+        print(f"  ⚠️  No processed videos found in {PROCESSED_DIR}")
+        return None
+
+    repost_counts = get_repost_counts()
+
+    # Calculate weights: videos with fewer posts get higher weight
+    weights = []
+    for vid in all_videos:
+        count = repost_counts.get(vid, 0)
+        # Weight decreases exponentially with repost count
+        # 0 posts = weight 1000, 1 post = weight 100, 2 posts = weight 10, etc.
+        weight = max(1, 1000 // (3 ** count))
+        weights.append(weight)
+
+    # Random selection weighted by post count (less posted = more likely)
+    selected = random.choices(all_videos, weights=weights, k=1)[0]
+    selected_path = os.path.join(PROCESSED_DIR, selected)
+
+    post_count = repost_counts.get(selected, 0)
+    print(f"  🎲 Selected (posted {post_count} time(s) before): {selected}")
+
+    return selected_path
+
 
 def run_pipeline():
     """
     Complete automation pipeline:
     Dropbox → Process → Upload to Social Media
 
-    Priority:
-    1. NEW videos in Dropbox → Download, process, upload
-    2. NO new videos → Get next old video (rotation) → Re-download, reprocess, upload
-    
-    Runs forever - always has content from Dropbox.
+    FALLBACK: If no new videos, repost old videos from Dropbox (random selection)
     """
     print("\n" + "=" * 60)
     print("🚀 STARTING AUTOMATION PIPELINE")
     print("=" * 60 + "\n")
 
-    # Step 1: Get ALL video names from Dropbox (no download yet)
-    print("📥 STEP 1: Checking Dropbox for videos...")
-    from dropbox_fetch import get_all_video_names_from_dropbox
-    
-    all_video_names = get_all_video_names_from_dropbox()
-    
-    if not all_video_names:
-        print("\n❌ No videos found in Dropbox!")
-        print("   Please add videos to your Dropbox folder.")
-        return
-    
-    print(f"📚 Found {len(all_video_names)} video(s) in Dropbox")
-    
-    # Check which videos are already published
-    from daily_publisher import get_already_published, get_next_video_for_rotation
-    
-    published_data = get_already_published()
-    published_names = [item["video_name"] for item in published_data]
-    
-    # Find NEW videos (not in published list)
-    new_videos = [name for name in all_video_names if name not in published_names]
-    
-    print(f"   - Published: {len(published_names)} video(s)")
-    print(f"   - New: {len(new_videos)} video(s)")
-    
-    # Decide: New videos or rotate old videos?
-    videos_to_download = []
-    
-    if new_videos:
-        print(f"\n✅ NEW VIDEOS FOUND: {len(new_videos)} video(s)")
-        print("   Priority: Processing new videos first")
-        videos_to_download = new_videos
-    else:
+    # Step 1: Fetch ONE video from Dropbox
+    print("📥 STEP 1: Fetching video from Dropbox...")
+    from dropbox_fetch import fetch_one_video_from_dropbox
+
+    # First try: fetch new video
+    downloaded = fetch_one_video_from_dropbox(allow_repost=False)
+
+    if not downloaded:
         print("\n⚠️  No new videos in Dropbox")
-        print("   Fallback: Rotating through old videos...")
-        
-        # Get NEXT old video in rotation (not the same as last time)
-        next_old_video = get_next_video_for_rotation(all_video_names)
-        
-        if next_old_video:
-            print(f"   Selected: {next_old_video}")
-            videos_to_download = [next_old_video]
-        else:
-            print("\n❌ No videos available to post!")
+        print("🔄 REPOST MODE: Fetching random published video for repost...\n")
+
+        # Fallback: fetch random already-published video from Dropbox
+        downloaded = fetch_one_video_from_dropbox(allow_repost=True)
+
+        if not downloaded:
+            print("\n✅ No videos to post (Dropbox is empty). Pipeline complete.")
+            print("   💡 Add new videos to Dropbox")
             return
-    
-    # Step 2: Download, Process, and Upload each video
-    print("\n" + "=" * 60)
-    print("📥 STEP 2: Downloading, Processing & Uploading...")
-    print("=" * 60 + "\n")
-    
-    from dropbox_fetch import download_video_by_name
+
+        print(f"\n✅ Repost Mode: Using existing video\n")
+
+    print(f"\n✅ Step 1 complete: Video downloaded\n")
+
+    # Step 2: Process video (upscale + watermark removal)
+    print("🎬 STEP 2: Processing video (upscaling + watermark removal)...")
     from process_videos import process_single_video
+
+    processed_video = process_single_video(downloaded)
+
+    if not processed_video or not os.path.exists(processed_video):
+        print("\n❌ Video processing failed!")
+        sys.exit(1)
+
+    print("\n✅ Step 2 complete: Video processed\n")
+
+    # Step 3: Upload to social media
+    print("📤 STEP 3: Uploading to social media platforms...")
+    print("   Platforms: Instagram, Facebook, Threads, YouTube")
+    print("\n" + "=" * 60 + "\n")
+
+    # Run the daily publisher with the processed video
     from daily_publisher import main as publish_video
-    
-    for video_name in videos_to_download:
-        # Download this video
-        print(f"\n📥 Downloading: {video_name}")
-        video_path = download_video_by_name(video_name)
-        
-        if not video_path:
-            print(f"❌ Failed to download: {video_name}")
-            continue
-        
-        # Process this video
-        print(f"🎬 Processing: {video_name}")
-        processed_path = process_single_video(video_path)
-        
-        if not processed_path:
-            print(f"❌ Failed to process: {video_name}")
-            # Clean up downloaded video
-            if os.path.exists(video_path):
-                os.remove(video_path)
-            continue
-        
-        # Upload this video
-        print(f"📤 Uploading: {video_name}")
-        sys.argv = ["daily_publisher.py", processed_path]
-        publish_video()
-        print(f"✅ Posted: {video_name}")
-        
-        # Clean up downloaded files (save space)
-        try:
-            if os.path.exists(video_path):
-                os.remove(video_path)
-                print(f"🗑️  Cleaned up: {os.path.basename(video_path)}")
-            if os.path.exists(processed_path):
-                os.remove(processed_path)
-                print(f"🗑️  Cleaned up: {os.path.basename(processed_path)}")
-        except Exception as e:
-            print(f"⚠️  Could not remove files: {e}")
-    
+    sys.argv = ["daily_publisher.py", processed_video]
+    publish_video()
+
     print("\n" + "=" * 60)
-    print(f"🎉 PIPELINE COMPLETE - {len(videos_to_download)} VIDEO(S) POSTED")
+    print("🎉 AUTOMATION PIPELINE COMPLETE")
     print("=" * 60)
 
 

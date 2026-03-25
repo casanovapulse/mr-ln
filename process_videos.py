@@ -3,9 +3,6 @@ Video Processor - Quality Enhancement (Video + Audio)
 1. Upscale video to 1080x1920 with quality enhancement
 2. Remove watermark (bottom-right corner)
 3. ENHANCE AUDIO (normalize volume, improve clarity) - if audio exists
-
-NOTE: Processed videos are saved to the same folder as input (Videos/).
-No permanent Processed_Videos folder - everything is temporary and cleaned up after upload.
 """
 import os
 import subprocess
@@ -16,14 +13,13 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 input_dir = "Videos"
-# Save processed video to same folder as input (no separate Processed_Videos folder)
-output_dir = "Videos"
+output_dir = "Processed_Videos"
 
-if not os.path.exists(input_dir):
-    os.makedirs(input_dir)
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 
-def process_single_video(video_path, force_overwrite=False):
+def process_single_video(video_path):
     if not os.path.exists(video_path):
         print(f"Error: Video not found: {video_path}")
         return None
@@ -31,13 +27,9 @@ def process_single_video(video_path, force_overwrite=False):
     filename = os.path.basename(video_path)
     out_path = os.path.join(output_dir, filename)
 
-    if os.path.exists(out_path) and not force_overwrite:
+    if os.path.exists(out_path):
         print(f"Skipping {filename} - already processed")
         return out_path
-    
-    if os.path.exists(out_path) and force_overwrite:
-        print(f"Overwriting {filename} - force reprocessing")
-        os.remove(out_path)
 
     cmd_probe = [
         "ffprobe", "-v", "error",
@@ -69,25 +61,6 @@ def process_single_video(video_path, force_overwrite=False):
     print(f"Original size: {width}x{height}")
     print(f"Has audio: {'Yes' if has_audio else 'No'}")
 
-    # Get video duration
-    cmd_duration = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        video_path
-    ]
-    try:
-        duration = float(subprocess.check_output(cmd_duration).decode("utf-8").strip())
-        print(f"Video duration: {duration:.2f} seconds")
-    except Exception as e:
-        print(f"Failed to get duration: {e}")
-        duration = None
-
-    # Loop video if under 10 seconds
-    loop_video = duration is not None and duration < 10
-    if loop_video:
-        print(f"⚠️  Video is under 10 seconds ({duration:.2f}s). Will loop to extend duration.")
-
     w_delogo = 180
     h_delogo = 80
     x_delogo = 1080 - w_delogo - 5
@@ -96,27 +69,16 @@ def process_single_video(video_path, force_overwrite=False):
     print(f"Processing {filename}...")
     print(f"  Upscaling to: 1080x1920")
     print(f"  Removing watermark at: x={x_delogo}, y={y_delogo}, w={w_delogo}, h={h_delogo}")
-    if loop_video:
-        print(f"  Looping: Video will be doubled (6s + 6s = 12s)")
     print(f"  Video: ENHANCED (sharpen + clarity boost)")
     if has_audio:
         print(f"  Audio: ENHANCED (normalize volume + improve clarity)")
     else:
         print(f"  Audio: No audio in original video")
 
-    if loop_video:
-        # Loop video to double the duration using loop filter
-        # loop=1: start=0 means play once, then loop once more (total 2x)
-        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo},loop=1:start=0[v]"
-    else:
-        vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
+    vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
 
     if has_audio:
-        if loop_video:
-            # Loop audio to match video (loop=1 means play twice total)
-            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5,aloop=1:start=0[a]"
-        else:
-            af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
+        af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
 
         cmd_ffmpeg = [
             "ffmpeg", "-y", "-i", video_path,
@@ -144,58 +106,39 @@ def process_single_video(video_path, force_overwrite=False):
 
     if result.returncode == 0:
         print(f"✅ Saved: {out_path} (ENHANCED)")
-        return out_path
+
+        # Step: Double the video duration by concatenating with itself
+        print(f"\n  Doubling video duration (concatenating video with itself)...")
+        doubled_path = os.path.join(output_dir, "doubled_" + filename)
+
+        cmd_concat = [
+            "ffmpeg", "-y",
+            "-i", out_path,
+            "-i", out_path,
+            "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
+            "-map", "[v]",
+            "-map", "[a]",
+            "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+            "-profile:v", "high", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            doubled_path
+        ]
+
+        concat_result = subprocess.run(cmd_concat, capture_output=True, text=True)
+
+        if concat_result.returncode == 0:
+            # Remove the non-doubled version, keep only the doubled one
+            os.remove(out_path)
+            # Rename doubled file to the original output name
+            os.rename(doubled_path, out_path)
+            print(f"✅ Video doubled successfully (duration: 2x original)")
+            return out_path
+        else:
+            print(f"⚠️  Doubling failed, keeping original: {concat_result.stderr[:200]}")
+            return out_path
     else:
-        print(f"❌ Failed to process video")
-        print(f"   FFmpeg error output:")
-        # Print error in chunks to avoid truncation
-        error_lines = result.stderr.split('\n')
-        for line in error_lines[:30]:  # Print first 30 lines of error
-            if line.strip():
-                print(f"   {line}")
+        print(f"❌ Failed: {result.stderr[:200]}")
         return None
-
-
-def process_all_videos(video_list=None, force_overwrite=False):
-    """
-    Process multiple videos.
-
-    Args:
-        video_list: List of video paths to process. If None, processes all in Videos folder.
-        force_overwrite: If True, reprocesses videos even if they exist in output folder.
-
-    Returns:
-        List of processed video paths
-    """
-    processed = []
-
-    if video_list:
-        # Process specific videos from the list
-        for vid_path in video_list:
-            result = process_single_video(vid_path, force_overwrite=force_overwrite)
-            if result:
-                processed.append(result)
-    else:
-        # Process all videos in input directory
-        videos = [f for f in os.listdir(input_dir) if f.endswith('.mp4')]
-        print(f"Found {len(videos)} videos to process.")
-
-        for filename in videos:
-            vid_path = os.path.join(input_dir, filename)
-            result = process_single_video(vid_path, force_overwrite=force_overwrite)
-            if result:
-                processed.append(result)
-
-    if processed:
-        print("\n" + "=" * 60)
-        print(f"PROCESSING COMPLETE - {len(processed)} VIDEO(S) ENHANCED")
-        print("=" * 60)
-    else:
-        print("\n" + "=" * 60)
-        print("NO VIDEOS PROCESSED")
-        print("=" * 60)
-    
-    return processed
 
 
 def main():
