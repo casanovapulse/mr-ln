@@ -4471,5 +4471,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-b8c88cdd-4f26-4e9a-9570-9933dd6226de.mp4",
+        "metadata": {
+            "title": "Hollywood's Golden Girl \u2728",
+            "description": "Margot Robbie shining bright like the Hollywood star she is! That smile could light up the entire red carpet. From Harley Quinn to Barbie, she's given us ICONIC moments! What's your favorite? #margotrobbie #harleyquinn #hollywood #golden #smile",
+            "success_flags": {
+                "instagram_reel": false,
+                "instagram_story": false,
+                "facebook_reel": true,
+                "facebook_story": true,
+                "threads": false,
+                "youtube": false
+            }
+        }
     }
 ]
