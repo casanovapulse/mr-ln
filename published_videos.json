@@ -6496,5 +6496,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-faba3053-da9a-4beb-882e-7acfbdb9bfd8.mp4",
+        "metadata": {
+            "title": "Stunning Margot Moment \ud83d\udcf8",
+            "description": "Another day, another stunning moment from Margot Robbie! She never has a bad look, never a bad performance, never a bad anything! Truly Hollywood perfection! Double tap for the queen! #margotrobbie #stunning #perfection #neverfails #queen",
+            "success_flags": {
+                "instagram_reel": false,
+                "instagram_story": false,
+                "facebook_reel": true,
+                "facebook_story": true,
+                "threads": false,
+                "youtube": false
+            }
+        }
     }
 ]
