@@ -62,7 +62,7 @@ jobs:
             fi
           done
 
-          if [ $critical_missing -eq 1 ]; then
+          if [ $missing -eq 1 ]; then
             echo "❌ Critical secrets (Dropbox/Facebook) missing!"
             exit 1
           fi
