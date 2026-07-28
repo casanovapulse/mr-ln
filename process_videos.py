@@ -67,15 +67,17 @@ def process_single_video(video_path):
     y_delogo = 1920 - h_delogo - 5
 
     print(f"Processing {filename}...")
-    print(f"  Upscaling to: 1080x1920")
+    print(f"  Upscaling to: 1080x1920 (fill frame, no black bars)")
     print(f"  Removing watermark at: x={x_delogo}, y={y_delogo}, w={w_delogo}, h={h_delogo}")
-    print(f"  Video: ENHANCED (sharpen + clarity boost)")
+    print(f"  Video: ENHANCED (HQ lanczos + contrast/saturation + sharp)")
     if has_audio:
         print(f"  Audio: ENHANCED (normalize volume + improve clarity)")
     else:
         print(f"  Audio: No audio in original video")
 
-    vf_filter = f"[0:v]scale=1080:1920:flags=lanczos,unsharp=5:5:1.0:5:5:0.0,cas=0.7,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
+    scale_pad = f"scale=1080:1920:flags=lanczos:force_original_aspect_ratio=increase,crop=1080:1920"
+    enhance = f"eq=contrast=1.05:saturation=1.15:brightness=0.02"
+    vf_filter = f"[0:v]{scale_pad},{enhance},unsharp=7:7:2.0:7:7:0.0,delogo=x={x_delogo}:y={y_delogo}:w={w_delogo}:h={h_delogo}[v]"
 
     if has_audio:
         af_filter = f"[0:a]loudnorm=I=-16:TP=-1.5:LRA=11,dynaudnorm=50:3:0.5[a]"
@@ -83,10 +85,10 @@ def process_single_video(video_path):
         cmd_ffmpeg = [
             "ffmpeg", "-y", "-i", video_path,
             "-filter_complex", f"{vf_filter};{af_filter}",
-            "-map", "[v]",
-            "-map", "[a]",
-            "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+            "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264", "-preset", "veryslow", "-crf", "14",
             "-profile:v", "high", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
             "-c:a", "aac", "-b:a", "192k",
             out_path
         ]
@@ -95,8 +97,9 @@ def process_single_video(video_path):
             "ffmpeg", "-y", "-i", video_path,
             "-filter_complex", vf_filter,
             "-map", "[v]",
-            "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+            "-c:v", "libx264", "-preset", "veryslow", "-crf", "14",
             "-profile:v", "high", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
             "-an",
             out_path
         ]
@@ -116,10 +119,10 @@ def process_single_video(video_path):
             "-i", out_path,
             "-i", out_path,
             "-filter_complex", "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
-            "-map", "[v]",
-            "-map", "[a]",
-            "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+            "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264", "-preset", "veryslow", "-crf", "14",
             "-profile:v", "high", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
             "-c:a", "aac", "-b:a", "192k",
             doubled_path
         ]
