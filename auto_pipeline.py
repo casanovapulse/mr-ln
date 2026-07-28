@@ -126,6 +126,19 @@ def run_pipeline():
 
     print("\n✅ Step 2 complete: Video processed\n")
 
+    print("STEP 2b: Verifying video resolution...")
+    import subprocess
+    try:
+        res = subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", processed_video]).decode().strip()
+        pw, ph = map(int, res.split("x"))
+        if pw != 1080 or ph != 1920:
+            print(f"⚠️  WARNING: Video is {pw}x{ph}, expected 1080x1920")
+        else:
+            print(f"✅ Resolution verified: {pw}x{ph}")
+    except Exception as e:
+        print(f"⚠️  Could not verify resolution: {e}")
+    print("")
+
     # Step 3: Upload to social media
     print("📤 STEP 3: Uploading to social media platforms...")
     print("   Platforms: Instagram, Facebook, Threads, YouTube")
