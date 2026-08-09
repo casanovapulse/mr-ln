@@ -12,16 +12,32 @@ from pathlib import Path
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path, override=True)
 
-# Import upload functions
+# Import upload functions (separate try/except per platform so one failure doesn't kill all)
+upload_to_instagram = None
+upload_to_threads = None
+upload_to_facebook = None
+upload_to_facebook_story = None
+upload_to_youtube = None
+
 try:
     from upload.upload_instagram import upload_to_instagram
+except ImportError as e:
+    print(f"⚠️  Instagram import failed: {e}")
+
+try:
     from upload.upload_threads import upload_to_threads
+except ImportError as e:
+    print(f"⚠️  Threads import failed: {e}")
+
+try:
     from upload.upload_facebook import upload_to_facebook, upload_to_facebook_story
+except ImportError as e:
+    print(f"⚠️  Facebook import failed: {e}")
+
+try:
     from upload.upload_to_youtube import upload_to_youtube
 except ImportError as e:
-    print(f"Error importing upload modules: {e}")
-    # Still want to proceed or stop?
-    pass
+    print(f"⚠️  YouTube import failed: {e}")
 
 PROCESSED_DIR = "Processed_Videos"
 PUBLISHED_LOG = "published_videos.json"
@@ -188,10 +204,10 @@ def main():
     print("📱 PLATFORM AVAILABILITY CHECK")
     print("=" * 60)
 
-    instagram_available = bool(os.getenv('INSTAGRAM_ACCESS_TOKEN') or os.getenv('FACEBOOK_ACCESS_TOKEN'))
-    facebook_available = bool(os.getenv('FACEBOOK_ACCESS_TOKEN'))
-    threads_available = bool(os.getenv('THREADS_ACCESS_TOKEN'))
-    youtube_available = bool(os.getenv('YT_REFRESH_TOKEN'))
+    instagram_available = upload_to_instagram is not None and bool(os.getenv('INSTAGRAM_ACCESS_TOKEN') or os.getenv('FACEBOOK_ACCESS_TOKEN'))
+    facebook_available = upload_to_facebook is not None and bool(os.getenv('FACEBOOK_ACCESS_TOKEN'))
+    threads_available = upload_to_threads is not None and bool(os.getenv('THREADS_ACCESS_TOKEN'))
+    youtube_available = upload_to_youtube is not None and bool(os.getenv('YT_REFRESH_TOKEN'))
 
     if instagram_available:
         print("✅ Instagram: Configured")
@@ -218,48 +234,67 @@ def main():
     # Instagram Reels
     if instagram_available:
         try:
-            upload_to_instagram(video_path, combined_caption, is_story=False)
-            success_flags["instagram_reel"] = True
+            result = upload_to_instagram(video_path, combined_caption, is_story=False)
+            if result and result.get('status') == 'skipped':
+                print(f"⚠️  Instagram Reel: Skipped ({result.get('reason', 'No credentials')})")
+            elif result and result.get('status') == 'failed':
+                print(f"❌ Instagram Reel upload failed: {result.get('error', 'Unknown error')}")
+            else:
+                success_flags["instagram_reel"] = True
         except Exception as e:
             print(f"❌ Instagram Reel upload failed: {e}")
     else:
-        print("⏭️  Skipping Instagram (no access token)")
+        print("⏭️  Skipping Instagram (no access token or module not loaded)")
 
     # Instagram Stories
     if instagram_available:
         try:
-            upload_to_instagram(video_path, combined_caption, is_story=True)
-            success_flags["instagram_story"] = True
+            result = upload_to_instagram(video_path, combined_caption, is_story=True)
+            if result and result.get('status') == 'skipped':
+                print(f"⚠️  Instagram Story: Skipped ({result.get('reason', 'No credentials')})")
+            elif result and result.get('status') == 'failed':
+                print(f"❌ Instagram Story upload failed: {result.get('error', 'Unknown error')}")
+            else:
+                success_flags["instagram_story"] = True
         except Exception as e:
             print(f"❌ Instagram Story upload failed: {e}")
 
     # Facebook Reels
     if facebook_available:
         try:
-            upload_to_facebook(video_path, description, title=title)
-            success_flags["facebook_reel"] = True
+            result = upload_to_facebook(video_path, description, title=title)
+            if result and result.get('status') == 'skipped':
+                print(f"⚠️  Facebook Reel: Skipped ({result.get('reason', 'No credentials')})")
+            else:
+                success_flags["facebook_reel"] = True
         except Exception as e:
             print(f"❌ Facebook Reel upload failed: {e}")
     else:
-        print("⏭️  Skipping Facebook (no access token)")
+        print("⏭️  Skipping Facebook (no access token or module not loaded)")
 
     # Facebook Stories
-    if facebook_available:
+    if facebook_available and upload_to_facebook_story:
         try:
-            upload_to_facebook_story(video_path)
-            success_flags["facebook_story"] = True
+            result = upload_to_facebook_story(video_path)
+            if result and result.get('status') == 'skipped':
+                print(f"⚠️  Facebook Story: Skipped ({result.get('reason', 'No credentials')})")
+            else:
+                success_flags["facebook_story"] = True
         except Exception as e:
             print(f"❌ Facebook Story upload failed: {e}")
 
     # Threads
     if threads_available:
         try:
-            upload_to_threads(video_path, combined_caption)
-            success_flags["threads"] = True
+            result = upload_to_threads(video_path, combined_caption)
+            if result and result.get('status') == 'skipped':
+                print(f"⚠️  Threads: Skipped ({result.get('reason', 'No credentials')})")
+            else:
+                success_flags["threads"] = True
         except Exception as e:
             print(f"❌ Threads upload failed: {e}")
     else:
-        print("⏭️  Skipping Threads (no access token)")
+        print("⏭️  Skipping Threads (no access token or module not loaded)")
 
     # YouTube Shorts
     if youtube_available:
@@ -269,7 +304,7 @@ def main():
         except Exception as e:
             print(f"❌ YouTube upload failed: {e}")
     else:
-        print("⏭️  Skipping YouTube (no credentials)")
+        print("⏭️  Skipping YouTube (no credentials or module not loaded)")
 
     # Record as published regardless of partial success,
     # to avoid repeating the same video. Alternatively, only record if fully successful.
