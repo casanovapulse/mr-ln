@@ -10096,5 +10096,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-c9c5fc5b-c673-4005-b9cc-8a1b1c0acba0.mp4",
+        "metadata": {
+            "title": "Barbie Energy IRL \ud83d\udc96",
+            "description": "Margot Robbie IS Barbie in human form! That pink carpet energy, that perfect smile, that iconic presence! She made Barbie dreams come true and we're still living for it! #margotrobbie #barbie #iconic #dreams #perfect",
+            "success_flags": {
+                "instagram_reel": true,
+                "instagram_story": true,
+                "facebook_reel": true,
+                "facebook_story": true,
+                "threads": false,
+                "youtube": false
+            }
+        }
     }
 ]
