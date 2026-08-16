@@ -10381,5 +10381,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-44bef543-eae6-46d6-82e3-53832deb59be.mp4",
+        "metadata": {
+            "title": "Margot's Red Carpet Moment \ud83d\udcab",
+            "description": "Margot Robbie making every red carpet moment unforgettable! Elegance, beauty, and talent all in one package. She's the complete package Hollywood needed! Who else is a lifelong fan? #margotrobbie #elegant #beautiful #talented #fan",
+            "success_flags": {
+                "instagram_reel": true,
+                "instagram_story": true,
+                "facebook_reel": true,
+                "facebook_story": false,
+                "threads": false,
+                "youtube": false
+            }
+        }
     }
 ]
