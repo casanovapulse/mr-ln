@@ -12316,5 +12316,20 @@
                 "youtube": false
             }
         }
+    },
+    {
+        "video_name": "grok-video-507d3c98-6e9a-461c-87aa-d74cdc540683.mp4",
+        "metadata": {
+            "title": "Margot Robbie Red Carpet Magic \u2728",
+            "description": "Margot Robbie absolutely slaying the red carpet! That confident walk, the stunning smile, pure Hollywood royalty energy. Who else thinks she's one of the most elegant actresses of our generation? Drop a \ud83d\udd25 if you agree! #margotrobbie #redcarpet #hollywood #actress #glam",
+            "success_flags": {
+                "instagram_reel": true,
+                "instagram_story": true,
+                "facebook_reel": true,
+                "facebook_story": false,
+                "threads": false,
+                "youtube": false
+            }
+        }
     }
 ]
