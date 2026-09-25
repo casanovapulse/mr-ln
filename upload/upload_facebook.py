@@ -9,15 +9,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def _post_pinned_comment(video_id, description, access_token, page_id):
+def _post_pinned_comment(video_id, message, access_token, page_id):
+    """Post the description (with app link) as a pinned comment on the reel."""
     import time
-    print(f"[facebook] Posting description as pinned comment...")
+    print(f"[facebook] Posting pinned comment with app link...")
+    app_link = "https://apps.apple.com/ng/app/voicepad-ai/id6758025779"
+    if app_link not in message:
+        message = f"{message}\n\n🌐 Get our app: {app_link}"
     max_retries = 5
     comment_id = None
     for attempt in range(max_retries):
         try:
             comment_url = f"https://graph.facebook.com/v21.0/{video_id}/comments"
-            comment_data = {'access_token': access_token, 'message': description}
+            comment_data = {'access_token': access_token, 'message': message}
             res_comment = requests.post(comment_url, data=comment_data, timeout=30)
             if res_comment.status_code == 200:
                 resp = res_comment.json()
@@ -49,6 +53,7 @@ def upload_to_facebook(video_path, description, title="VELOCITY HEBREW"):
     if not page_id: raise ValueError("FACEBOOK_PAGE_ID not set")
     video_path_obj = Path(video_path)
     if not video_path_obj.exists(): raise FileNotFoundError(f"Video not found: {video_path}")
+    fb_description = f"{description}\n\n🌐 Get our app: https://apps.apple.com/ng/app/voicepad-ai/id6758025779"
     try:
         file_size = video_path_obj.stat().st_size
         start_url = f"https://graph.facebook.com/v21.0/{page_id}/video_reels"
@@ -64,10 +69,10 @@ def upload_to_facebook(video_path, description, title="VELOCITY HEBREW"):
             res_transfer = requests.post(upload_url, headers=headers, data=f, timeout=600)
         if res_transfer.status_code != 200: raise Exception(f"Transfer failed: {res_transfer.text}")
         finish_url = f"https://graph.facebook.com/v21.0/{page_id}/video_reels"
-        finish_data = {'access_token': access_token, 'upload_phase': 'finish', 'video_id': video_id, 'description': description, 'video_state': 'PUBLISHED'}
+        finish_data = {'access_token': access_token, 'upload_phase': 'finish', 'video_id': video_id, 'description': fb_description, 'video_state': 'PUBLISHED'}
         res_finish = requests.post(finish_url, data=finish_data, timeout=60)
         if res_finish.status_code == 200 and res_finish.json().get('success'):
-            _post_pinned_comment(video_id, description, access_token, page_id)
+            _post_pinned_comment(video_id, fb_description, access_token, page_id)
             return {'id': video_id, 'platform': 'facebook', 'status': 'success', 'url': f"https://facebook.com/{video_id}"}
         else: raise Exception(f"Finish failed: {res_finish.text}")
     except Exception as e: print(f"[facebook] ERROR: {e}"); raise
